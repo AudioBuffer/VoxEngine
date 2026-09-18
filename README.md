@@ -1,4 +1,4 @@
-# VoxEngine (AudioBuffer)
+# VoxEngine 
 
 **VoxEngine** is an end-side native AI Singing Voice Synthesis (SVS) engine tailored for individual geeks and low-spec mobile devices. 
 
