@@ -1,0 +1,26 @@
+# ---- 构建产物 ----
+build/
+bin/
+*.o
+*.so
+*.a
+
+# ---- 二进制分发物（体积大，改用 GitHub Releases）----
+releases/
+*.apk
+*.idsig
+*.keystore
+
+# ---- 音频产物（测试输出，不入库）----
+*.wav
+*.npy
+*.onnx
+*.mp3
+
+# ---- ONNX Runtime（体积大，按需下载；见 README）----
+onnxdev/
+android.jar
+
+# ---- 编辑器 / 系统 ----
+*.swp
+.DS_Store
