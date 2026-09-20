@@ -14,6 +14,7 @@
 #include <glib-unix.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include "i18n.h"
 #include "vox_engine.h"
 #include "seq.h"
 #include "onnx_engine.h"
@@ -79,7 +80,7 @@ static float  g_formants[5] = { 800, 1200, 2500, 3500, 4500 };
 static double g_fs = 44100.0;
 static double g_dur = 0.0;
 static double g_alpha = 2.5;      // 声门开相增长率，自然值 2~5
-static char   g_status[256] = "就绪";
+static char   g_status[256] = "就绪";   // 启动时按语言重设
 
 // ---------------- 设置项状态 ----------------
 static const char* kEngineVersion = "0.4.0-alpha";
@@ -265,7 +266,7 @@ static gboolean onDrawFormant(GtkWidget* w, cairo_t* cr, gpointer) {
         char b[8]; std::snprintf(b, sizeof b, "F%d", k+1);
         label(cr, b, x+2, 11);
     }
-    label(cr, "共振峰", 4, H-4);
+    label(cr, T("共振峰", "Formants"), 4, H-4);
     return TRUE;
 }
 
@@ -282,8 +283,8 @@ static gboolean onDrawSpec(GtkWidget* w, cairo_t* cr, gpointer) {
             if (i == 0) cairo_move_to(cr, x, y); else cairo_line_to(cr, x, y);
         }
         cairo_stroke(cr);
-    } else label(cr, "渲染后显示", 6, H/2.0);
-    label(cr, "频谱", 4, H-4);
+    } else label(cr, T("渲染后显示", "Shown after render"), 6, H/2.0);
+    label(cr, T("频谱", "Spectrum"), 4, H-4);
     return TRUE;
 }
 
@@ -309,8 +310,8 @@ static gboolean onDrawPitch(GtkWidget* w, cairo_t* cr, gpointer) {
         cairo_stroke(cr);
         char b[32]; std::snprintf(b, sizeof b, "%.0f-%.0fHz", mn, mn+span);
         label(cr, b, 4, 11);
-    } else label(cr, "渲染后显示", 6, H/2.0);
-    label(cr, "音高", 4, H-4);
+    } else label(cr, T("渲染后显示", "Shown after render"), 6, H/2.0);
+    label(cr, T("音高", "Pitch"), 4, H-4);
     return TRUE;
 }
 
@@ -347,14 +348,20 @@ static void trackLoad(int i) {
 }
 
 // ---- 声库（内置男声 / 女声）----
-struct VoicebankDef { const char* name; const char* desc; double scale; };
+struct VoicebankDef {
+    const char* nameZh; const char* nameEn;
+    const char* descZh; const char* descEn;
+    double scale;
+};
 static const VoicebankDef kVoices[] = {
-    { "男声（内置）", "共振峰 ×0.95　低沉", 0.95 },
-    { "女声（内置）", "共振峰 ×1.14　明亮", 1.14 },
-    { "童声（内置）", "共振峰 ×1.30　清亮", 1.30 },
+    { "男声（内置）", "Male (built-in)",  "共振峰 ×0.95　低沉", "Formants x0.95  deep",   0.95 },
+    { "女声（内置）", "Female (built-in)","共振峰 ×1.14　明亮", "Formants x1.14  bright", 1.14 },
+    { "童声（内置）", "Child (built-in)", "共振峰 ×1.30　清亮", "Formants x1.30  clear",  1.30 },
 };
 static const int kVoiceCount = (int)(sizeof(kVoices) / sizeof(kVoices[0]));
-static const char* voicebankName(int v)  { return kVoices[std::clamp(v,0,kVoiceCount-1)].name; }
+static const char* vbName(int v) { const auto& d = kVoices[std::clamp(v,0,kVoiceCount-1)]; return isEn() ? d.nameEn : d.nameZh; }
+static const char* vbDesc(int v) { const auto& d = kVoices[std::clamp(v,0,kVoiceCount-1)]; return isEn() ? d.descEn : d.descZh; }
+static const char* voicebankName(int v)  { return vbName(v); }
 static double      voicebankScale(int v) { return kVoices[std::clamp(v,0,kVoiceCount-1)].scale; }
 
 static int g_voicebank = 0;  // 兼容旧引用：始终等于当前轨的声库
@@ -503,8 +510,8 @@ static gboolean onDrawRoll(GtkWidget* w, cairo_t* cr, gpointer) {
     cairo_set_font_size(cr, 10);
     char hint[160];
     std::snprintf(hint, sizeof hint,
-        "左键加/拖音符 · 右键删 · 中键框选 · Ctrl+C 复制 / Ctrl+V 粘到鼠标处   [%s] %zu 音符 %zu 选中",
-        g_tracks.empty() ? "轨道" : g_tracks[(size_t)g_curTrack].name.c_str(),
+        T("左键加/拖音符 · 右键删 · 中键框选 · Ctrl+C 复制 / Ctrl+V 粘到鼠标处   [%s] %zu 音符 %zu 选中", "L-click add/drag - R-click delete - M-drag box-select - Ctrl+C copy / Ctrl+V paste at cursor   [%s] %zu notes %zu selected"),
+        g_tracks.empty() ? T("轨道", "Tracks") : g_tracks[(size_t)g_curTrack].name.c_str(),
         g_notes.size(), g_sel2.size());
     cairo_move_to(cr, kKeyW + 4, H - 4);
     cairo_show_text(cr, hint);
@@ -531,7 +538,7 @@ static void seedDemo() {
 static void doCopy() {
     std::vector<int> sel = g_sel2;
     if (sel.empty() && g_sel >= 0) sel.push_back(g_sel);
-    if (sel.empty()) { std::snprintf(g_status, sizeof g_status, "未选中音符（中键框选）"); return; }
+    if (sel.empty()) { std::snprintf(g_status, sizeof g_status, T("未选中音符（中键框选）", "No notes selected (use middle-drag to box-select)")); return; }
     double t0 = 1e18;
     for (int i : sel) if (i >= 0 && i < (int)g_notes.size()) t0 = std::min(t0, g_notes[i].start);
     g_clip.clear();
@@ -541,13 +548,13 @@ static void doCopy() {
         n.start -= t0;
         g_clip.push_back(n);
     }
-    std::snprintf(g_status, sizeof g_status, "已复制 %zu 个音符", g_clip.size());
+    std::snprintf(g_status, sizeof g_status, T("已复制 %zu 个音符", "Copied %zu note(s)"), g_clip.size());
     if (g_daRoll) gtk_widget_queue_draw(g_daRoll);
 }
 
 // 粘贴：锚在鼠标所在时间，写入「当前轨道」
 static void doPaste() {
-    if (g_clip.empty()) { std::snprintf(g_status, sizeof g_status, "剪贴板为空"); return; }
+    if (g_clip.empty()) { std::snprintf(g_status, sizeof g_status, T("剪贴板为空", "Clipboard is empty")); return; }
     const double anchor = std::max(0.0, g_mouseT);
     g_sel2.clear();
     for (RollNote n : g_clip) {
@@ -556,8 +563,8 @@ static void doPaste() {
         g_sel2.push_back((int)g_notes.size() - 1);
     }
     trackSave();
-    std::snprintf(g_status, sizeof g_status, "已粘贴 %zu 个音符 → %s",
-                  g_clip.size(), g_tracks.empty() ? "轨道" : g_tracks[(size_t)g_curTrack].name.c_str());
+    std::snprintf(g_status, sizeof g_status, T("已粘贴 %zu 个音符 → %s", "Pasted %zu note(s) -> %s"),
+                  g_clip.size(), g_tracks.empty() ? T("轨道", "Tracks") : g_tracks[(size_t)g_curTrack].name.c_str());
     if (g_daRoll) gtk_widget_queue_draw(g_daRoll);
 }
 
@@ -578,13 +585,13 @@ static void onTrackClick(GtkWidget*, gpointer data) {
     syncParamWidgets();
     rebuildTracks();
     if (g_daRoll) gtk_widget_queue_draw(g_daRoll);
-    std::snprintf(g_status, sizeof g_status, "切换到 %s", g_tracks[(size_t)g_curTrack].name.c_str());
+    std::snprintf(g_status, sizeof g_status, T("切换到 %s", "Switched to %s"), g_tracks[(size_t)g_curTrack].name.c_str());
 }
 
 static void onNewTrack(GtkWidget*, gpointer) {
     trackSave();
     char nm[32];
-    std::snprintf(nm, sizeof nm, "轨道%zu", g_tracks.size() + 1);
+    std::snprintf(nm, sizeof nm, T("轨道%zu", "Track %zu"), g_tracks.size() + 1);
     g_tracks.push_back(Track{ nm, {} });
     g_curTrack = (int)g_tracks.size() - 1;
     g_notes.clear();
@@ -592,7 +599,7 @@ static void onNewTrack(GtkWidget*, gpointer) {
     syncParamWidgets();
     rebuildTracks();
     if (g_daRoll) gtk_widget_queue_draw(g_daRoll);
-    std::snprintf(g_status, sizeof g_status, "已新建 %s", nm);
+    std::snprintf(g_status, sizeof g_status, T("已新建 %s", "Created %s"), nm);
 }
 
 static GtkWidget *g_vbRevealer=nullptr,*g_vbButton=nullptr,*g_overlay=nullptr,*g_vbList=nullptr;
@@ -616,24 +623,24 @@ static void syncParamWidgets() {
     g_syncing = false;
     if (g_vbButton) {
         char lbl[128];
-        std::snprintf(lbl, sizeof lbl, "声库：%s\n（点击选择）", kVoices[P.voicebank].name);
+        std::snprintf(lbl, sizeof lbl, T("声库：%s\n（点击选择）", "Voice: %s\n(click to choose)"), vbName(P.voicebank));
         gtk_button_set_label(GTK_BUTTON(g_vbButton), lbl);
     }
 }
 static void onF0Changed(GtkRange* r, gpointer) {
     if (g_syncing || g_tracks.empty()) return;
     curP().f0Shift = gtk_range_get_value(r);
-    std::snprintf(g_status, sizeof g_status, "本轨基频细调 %+.1f 半音", curP().f0Shift);
+    std::snprintf(g_status, sizeof g_status, T("本轨基频细调 %+.1f 半音", "Track pitch shift %+.1f semitone(s)"), curP().f0Shift);
 }
 static void onAlphaChanged(GtkRange* r, gpointer) {
     if (g_syncing || g_tracks.empty()) return;
     curP().alpha = gtk_range_get_value(r);
-    std::snprintf(g_status, sizeof g_status, "本轨张力 %.1f", curP().alpha);
+    std::snprintf(g_status, sizeof g_status, T("本轨张力 %.1f", "Track tension %.1f"), curP().alpha);
 }
 static void onBreathChanged(GtkRange* r, gpointer) {
     if (g_syncing || g_tracks.empty()) return;
     curP().breath = gtk_range_get_value(r);
-    std::snprintf(g_status, sizeof g_status, "本轨气息 %.2f", curP().breath);
+    std::snprintf(g_status, sizeof g_status, T("本轨气息 %.2f", "Track breath %.2f"), curP().breath);
 }
 
 static void fillVoicebankList() {
@@ -642,8 +649,8 @@ static void fillVoicebankList() {
     const int cw = g_tracks.empty() ? 0 : curP().voicebank;
     for (int i = 0; i < kVoiceCount; ++i) {
         char lbl[200];
-        std::snprintf(lbl, sizeof lbl, "%s%s\n%s", kVoices[i].name,
-                      (i == cw) ? "　✔当前" : "", kVoices[i].desc);
+        std::snprintf(lbl, sizeof lbl, "%s%s\n%s", vbName(i),
+                      (i == cw) ? T("　✔当前", "  [current]") : "", vbDesc(i));
         GtkWidget* b = gtk_button_new_with_label(lbl);
         if (i == cw) gtk_style_context_add_class(gtk_widget_get_style_context(b), "vox-vb-sel");
         g_signal_connect_data(b, "clicked", G_CALLBACK(onVbPick),
@@ -656,7 +663,7 @@ static void vbApply(int idx) {
     if (idx < 0 || idx >= kVoiceCount) return;
     if (!g_tracks.empty()) curP().voicebank = idx;
     g_voicebank = idx;
-    std::snprintf(g_status, sizeof g_status, "本轨声库已切换为 %s", kVoices[idx].name);
+    std::snprintf(g_status, sizeof g_status, T("本轨声库已切换为 %s", "Track voicebank switched to %s"), vbName(idx));
     syncParamWidgets();
     fillVoicebankList();
     if (g_vbRevealer) gtk_revealer_set_reveal_child(GTK_REVEALER(g_vbRevealer), FALSE);
@@ -711,7 +718,7 @@ static void buildVoicebankPanel() {
     GtkWidget* panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_set_size_request(panel, 220, -1);
 
-    GtkWidget* title = gtk_label_new("选择声库");
+    GtkWidget* title = gtk_label_new(T("选择声库", "Choose voicebank"));
     gtk_style_context_add_class(gtk_widget_get_style_context(title), "vox-panel-title");
     gtk_widget_set_halign(title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(panel), title, FALSE, FALSE, 0);
@@ -719,7 +726,7 @@ static void buildVoicebankPanel() {
     g_vbList = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_box_pack_start(GTK_BOX(panel), g_vbList, FALSE, FALSE, 0);
 
-    GtkWidget* hint = gtk_label_new("声库控制共振峰整体缩放，作用于当前轨道");
+    GtkWidget* hint = gtk_label_new(T("声库控制共振峰整体缩放，作用于当前轨道", "Voicebank scales the formants; applies to the current track"));
     gtk_style_context_add_class(gtk_widget_get_style_context(hint), "vox-panel-hint");
     gtk_label_set_line_wrap(GTK_LABEL(hint), TRUE);
     gtk_widget_set_halign(hint, GTK_ALIGN_START);
@@ -748,7 +755,7 @@ static void rebuildTracks() {
     for (size_t i = 0; i < g_tracks.size(); ++i) {
         char lbl[96];
         std::snprintf(lbl, sizeof lbl, "%zu. %s%s", i + 1, g_tracks[i].name.c_str(),
-                      ((int)i == g_curTrack) ? "  ← 当前" : "");
+                      ((int)i == g_curTrack) ? T("  ← 当前", "  <- current") : "");
         GtkWidget* b = gtk_button_new_with_label(lbl);
         g_signal_connect_data(b, "clicked", G_CALLBACK(onTrackClick),
                               (gpointer)(intptr_t)i, nullptr, (GConnectFlags)0);
@@ -840,7 +847,7 @@ static gboolean onRollRelease(GtkWidget* w, GdkEventButton* e, gpointer) {
             if (nx1 >= x0 && nx0 <= x1 && ny >= y0 - 9 && ny <= y1 + 9)
                 g_sel2.push_back((int)i);
         }
-        std::snprintf(g_status, sizeof g_status, "框中 %zu 个音符", g_sel2.size());
+        std::snprintf(g_status, sizeof g_status, T("框中 %zu 个音符", "Boxed %zu note(s)"), g_sel2.size());
         gtk_widget_queue_draw(w);
         return TRUE;
     }
@@ -919,10 +926,10 @@ static void renderRoll() {
 static void settingsRefreshOnnx() {
     if (!g_guiOnnxStatus) return;
     char b[256];
-    if (!g_onnxOn)             std::snprintf(b,sizeof b,"已关闭 —— 使用纯参数合成（DSP）");
-    else if (g_onnx.loading()) std::snprintf(b,sizeof b,"模型加载中…（当前仍为纯参数合成）");
-    else if (g_onnx.ready())   std::snprintf(b,sizeof b,"已启用 —— ONNX 推理生效");
-    else                       std::snprintf(b,sizeof b,"无可用模型 —— 已放弃 ONNX，回落纯参数合成%s%s",
+    if (!g_onnxOn)             std::snprintf(b,sizeof b,T("已关闭 —— 使用纯参数合成（DSP）", "Off - pure parametric synthesis (DSP)"));
+    else if (g_onnx.loading()) std::snprintf(b,sizeof b,T("模型加载中…（当前仍为纯参数合成）", "Loading model... (still pure parametric synthesis)"));
+    else if (g_onnx.ready())   std::snprintf(b,sizeof b,T("已启用 —— ONNX 推理生效", "Enabled - ONNX inference active"));
+    else                       std::snprintf(b,sizeof b,T("无可用模型 —— 已放弃 ONNX，回落纯参数合成%s%s", "No usable model - ONNX skipped, falling back to pure parametric synthesis%s%s"),
                                      g_onnx.lastError().empty()?"":"：", g_onnx.lastError().c_str());
     gtk_label_set_text(GTK_LABEL(g_guiOnnxStatus), b);
 }
@@ -955,45 +962,54 @@ static void gridCfg(GtkWidget* g) {
     gtk_grid_set_column_spacing(GTK_GRID(g), 10);
     gtk_container_set_border_width(GTK_CONTAINER(g), 8);
 }
+static void onLangChanged(GtkComboBox* cb, gpointer) {
+    const int idx = gtk_combo_box_get_active(cb);
+    if (idx < 0) return;
+    saveLang(idx);
+    std::snprintf(g_status, sizeof g_status, "%s",
+        T("语言已切换，重启后生效", "Language changed - restart to apply"));
+    if (g_daRoll) gtk_widget_queue_draw(g_daRoll);
+}
+
 static void onSettings(GtkWidget* w, gpointer) {
     GtkWidget* win = gtk_widget_get_toplevel(w);
-    GtkWidget* dlg = gtk_dialog_new_with_buttons("设置",
+    GtkWidget* dlg = gtk_dialog_new_with_buttons(T("设置", "Settings"),
         GTK_IS_WINDOW(win) ? GTK_WINDOW(win) : nullptr,
-        GTK_DIALOG_MODAL, "关闭", GTK_RESPONSE_CLOSE, nullptr);
+        GTK_DIALOG_MODAL, T("关闭", "Close"), GTK_RESPONSE_CLOSE, nullptr);
     gtk_window_set_default_size(GTK_WINDOW(dlg), 640, 420);
     GtkWidget* box = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
 
-    GtkWidget* f1 = gtk_frame_new("引擎版本");
+    GtkWidget* f1 = gtk_frame_new(T("引擎版本", "Engine version"));
     GtkWidget* g1 = gtk_grid_new(); gridCfg(g1);
     char vbuf[160];
-    std::snprintf(vbuf, sizeof vbuf, "VoxEngine %s　　核心：C++ 物理声学骨架（DSP 参数合成）", kEngineVersion);
+    std::snprintf(vbuf, sizeof vbuf, T("VoxEngine %s　　核心：C++ 物理声学骨架（DSP 参数合成）", "VoxEngine %s   Core: C++ physical-acoustics skeleton (DSP synthesis)"), kEngineVersion);
     gtk_grid_attach(GTK_GRID(g1), gtk_label_new(vbuf), 0, 0, 2, 1);
     gtk_container_add(GTK_CONTAINER(f1), g1);
     gtk_box_pack_start(GTK_BOX(box), f1, FALSE, FALSE, 0);
 
-    GtkWidget* f2 = gtk_frame_new("JS 外挂插件");
+    GtkWidget* f2 = gtk_frame_new(T("JS 外挂插件", "JS plugin"));
     GtkWidget* g2 = gtk_grid_new(); gridCfg(g2);
-    GtkWidget* jsOn = gtk_check_button_new_with_label("启用插件");
+    GtkWidget* jsOn = gtk_check_button_new_with_label(T("启用插件", "Enable plugin"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(jsOn), g_jsOn);
     g_signal_connect(jsOn, "toggled", G_CALLBACK(onJsToggled), nullptr);
     gtk_grid_attach(GTK_GRID(g2), jsOn, 0, 0, 1, 1);
-    GtkWidget* jsF = fileRow("选择 .js 插件");
+    GtkWidget* jsF = fileRow(T("选择 .js 插件", "Choose .js plugin"));
     g_signal_connect(jsF, "file-set", G_CALLBACK(onJsFile), nullptr);
     gtk_grid_attach(GTK_GRID(g2), jsF, 1, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(g2), gtk_label_new(
-        "外部 .js 文件即插件，暴露 spectrum / f0Spectrum / f0Contour / duration 等钩子（运行于 QuickJS）"), 0, 1, 2, 1);
+        T("外部 .js 文件即插件，暴露 spectrum / f0Spectrum / f0Contour / duration 等钩子（运行于 QuickJS）", "An external .js file is a plugin exposing spectrum / f0Spectrum / f0Contour / duration hooks (runs on QuickJS)")), 0, 1, 2, 1);
     gtk_container_add(GTK_CONTAINER(f2), g2);
     gtk_box_pack_start(GTK_BOX(box), f2, FALSE, FALSE, 0);
 
-    GtkWidget* f3 = gtk_frame_new("ONNX 推理引擎");
+    GtkWidget* f3 = gtk_frame_new(T("ONNX 推理引擎", "ONNX inference"));
     GtkWidget* g3 = gtk_grid_new(); gridCfg(g3);
     GtkWidget* sw = gtk_switch_new();
     gtk_switch_set_active(GTK_SWITCH(sw), g_onnxOn);
     g_signal_connect(sw, "state-set", G_CALLBACK(onOnnxToggled), nullptr);
-    gtk_grid_attach(GTK_GRID(g3), gtk_label_new("推理开关"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(g3), gtk_label_new(T("推理开关", "Inference switch")), 0, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(g3), sw, 1, 0, 1, 1);
-    GtkWidget* onxF = fileRow("选择 .onnx 模型");
+    GtkWidget* onxF = fileRow(T("选择 .onnx 模型", "Choose .onnx model"));
     g_signal_connect(onxF, "file-set", G_CALLBACK(onOnnxFile), nullptr);
     gtk_grid_attach(GTK_GRID(g3), onxF, 2, 0, 1, 1);
     g_guiOnnxStatus = gtk_label_new("");
@@ -1002,16 +1018,32 @@ static void onSettings(GtkWidget* w, gpointer) {
     gtk_container_add(GTK_CONTAINER(f3), g3);
     gtk_box_pack_start(GTK_BOX(box), f3, FALSE, FALSE, 0);
 
-    GtkWidget* f4 = gtk_frame_new("声库配置");
+    GtkWidget* f4 = gtk_frame_new(T("声库配置", "Voicebank"));
     GtkWidget* g4 = gtk_grid_new(); gridCfg(g4);
-    GtkWidget* bkF = fileRow("选择声库 .zip");
+    GtkWidget* bkF = fileRow(T("选择声库 .zip", "Choose voicebank .zip"));
     g_signal_connect(bkF, "file-set", G_CALLBACK(onBankFile), nullptr);
-    gtk_grid_attach(GTK_GRID(g4), gtk_label_new("声库包"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(g4), gtk_label_new(T("声库包", "Voicebank package")), 0, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(g4), bkF, 1, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(g4), gtk_label_new(
-        "声库＝一个 zip，内含 voice.json 与 3 个 .onnx（Q8）。未配置则使用内置男声 / 女声。"), 0, 1, 2, 1);
+        T("声库＝一个 zip，内含 voice.json 与 3 个 .onnx（Q8）。未配置则使用内置男声 / 女声。", "A voicebank is a zip containing voice.json plus 3 .onnx (Q8). Falls back to built-in Male / Female.")), 0, 1, 2, 1);
     gtk_container_add(GTK_CONTAINER(f4), g4);
     gtk_box_pack_start(GTK_BOX(box), f4, FALSE, FALSE, 0);
+
+    // ---- 语言 ----
+    GtkWidget* f5 = gtk_frame_new(T("语言 / Language", "Language"));
+    GtkWidget* g5 = gtk_grid_new(); gridCfg(g5);
+    GtkWidget* cb = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(cb), "中文");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(cb), "English");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(cb), isEn() ? 1 : 0);
+    g_signal_connect(cb, "changed", G_CALLBACK(onLangChanged), nullptr);
+    gtk_grid_attach(GTK_GRID(g5), gtk_label_new(T("界面语言", "UI language")), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(g5), cb, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(g5), gtk_label_new(
+        T("切换后重启程序生效；偏好保存在 ~/.voxengine_lang",
+          "Restart to apply; preference saved in ~/.voxengine_lang")), 0, 1, 2, 1);
+    gtk_container_add(GTK_CONTAINER(f5), g5);
+    gtk_box_pack_start(GTK_BOX(box), f5, FALSE, FALSE, 0);
 
     settingsRefreshOnnx();
     gtk_widget_show_all(dlg);
@@ -1046,7 +1078,7 @@ static void onRender(GtkWidget* btn, gpointer entryPtr) {
             i = j;
         }
         if (built.empty()) {
-            std::snprintf(g_status, sizeof g_status, "无效音素，请重新输入");
+            std::snprintf(g_status, sizeof g_status, T("无效音素，请重新输入", "Invalid phoneme, please retry"));
             gtk_widget_queue_draw(g_daRoll);
             return;
         }
@@ -1055,7 +1087,7 @@ static void onRender(GtkWidget* btn, gpointer entryPtr) {
         g_sel = -1;
     }
     if (g_notes.empty()) {
-        std::snprintf(g_status, sizeof g_status, "卷帘为空：在网格上点击添加音符");
+        std::snprintf(g_status, sizeof g_status, T("卷帘为空：在网格上点击添加音符", "Roll is empty: click the grid to add a note"));
         gtk_widget_queue_draw(g_daRoll);
         return;
     }
@@ -1066,7 +1098,7 @@ static void onRender(GtkWidget* btn, gpointer entryPtr) {
     computeSpectrum();
     computePitch();
     smoothPitch(g_f0);
-    std::snprintf(g_status, sizeof g_status, "%.2fs  %zu 音符", g_dur, g_notes.size());
+    std::snprintf(g_status, sizeof g_status, T("%.2fs  %zu 音符", "%.2fs  %zu note(s)"), g_dur, g_notes.size());
     gtk_widget_queue_draw(g_daFormant);
     gtk_widget_queue_draw(g_daSpec);
     gtk_widget_queue_draw(g_daPitch);
@@ -1196,7 +1228,7 @@ int main(int argc, char** argv) {
         chk(curP().voicebank == 2,                  "切回甲轨声库保留");
         chk(std::fabs(curP().alpha - 7.5) < 1e-9,   "每轨参数互不污染（乙轨改动未影响甲轨）");
 
-        std::printf("\n%s  (%d 项失败)\n", fail ? "自检失败" : "自检全部通过", fail);
+        std::printf("\n%s  (%d 项失败)\n", fail ? T("自检失败", "Self-test FAILED") : T("自检全部通过", "All self-tests passed"), fail);
         return fail ? 1 : 0;
     }
 
@@ -1241,8 +1273,8 @@ int main(int argc, char** argv) {
     GtkWidget* singer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_size_request(singer, 156, -1);
     gtk_box_pack_start(GTK_BOX(mid), singer, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new("歌手 / 本轨参数"), FALSE, FALSE, 0);
-    GtkWidget* av = gtk_button_new_with_label("声库：男声（内置）\n（点击选择）");
+    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new(T("歌手 / 本轨参数", "Singer / Track params")), FALSE, FALSE, 0);
+    GtkWidget* av = gtk_button_new_with_label(T("声库：男声（内置）\n（点击选择）", "Voice: Male (built-in)\n(click to choose)"));
     g_signal_connect(av, "clicked", G_CALLBACK(onVoicebank), nullptr);
     g_vbButton = av;
     gtk_box_pack_start(GTK_BOX(singer), av, FALSE, FALSE, 0);
@@ -1251,19 +1283,19 @@ int main(int argc, char** argv) {
     g_scF0 = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, -12.0, 12.0, 1.0);
     gtk_range_set_value(GTK_RANGE(g_scF0), 0.0);
     g_signal_connect(g_scF0, "value-changed", G_CALLBACK(onF0Changed), nullptr);
-    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new("基频细调（半音）"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new(T("基频细调（半音）", "Pitch fine-tune (semitone)")), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(singer), g_scF0, FALSE, FALSE, 0);
 
     g_scAlpha = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.5, 25.0, 0.1);
     gtk_range_set_value(GTK_RANGE(g_scAlpha), 2.5);
     g_signal_connect(g_scAlpha, "value-changed", G_CALLBACK(onAlphaChanged), nullptr);
-    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new("张力 alpha"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new(T("张力 alpha", "Tension alpha")), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(singer), g_scAlpha, FALSE, FALSE, 0);
 
     g_scBreath = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.05);
     gtk_range_set_value(GTK_RANGE(g_scBreath), 0.0);
     g_signal_connect(g_scBreath, "value-changed", G_CALLBACK(onBreathChanged), nullptr);
-    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new("气息"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(singer), gtk_label_new(T("气息", "Breath")), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(singer), g_scBreath, FALSE, FALSE, 0);
 
     g_daRoll = gtk_drawing_area_new();
@@ -1277,24 +1309,24 @@ int main(int argc, char** argv) {
     GtkWidget* track = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_size_request(track, 120, -1);
     gtk_box_pack_start(GTK_BOX(mid), track, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(track), gtk_label_new("轨道"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(track), gtk_label_new(T("轨道", "Tracks")), FALSE, FALSE, 0);
     g_trackBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_box_pack_start(GTK_BOX(track), g_trackBox, FALSE, FALSE, 0);
-    GtkWidget* newTrk = gtk_button_new_with_label("＋ 新建空白轨道");
+    GtkWidget* newTrk = gtk_button_new_with_label(T("＋ 新建空白轨道", "+ New empty track"));
     g_signal_connect(newTrk, "clicked", G_CALLBACK(onNewTrack), nullptr);
     gtk_box_pack_start(GTK_BOX(track), newTrk, FALSE, FALSE, 0);
 
     // ---- 底部控制栏 ----
     GtkWidget* bot = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_box_pack_start(GTK_BOX(root), bot, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(bot), gtk_label_new("音素:"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(bot), gtk_label_new(T("音素:", "Phonemes:")), FALSE, FALSE, 0);
     GtkWidget* entry = gtk_entry_new();
-    gtk_entry_set_text(GTK_ENTRY(entry), "中/英/日：ba be bi / ni hao / ka ki");
+    gtk_entry_set_text(GTK_ENTRY(entry), T("中/英/日：ba be bi / ni hao / ka ki", "ZH/EN/JA: ba be bi / ni hao / ka ki"));
     gtk_box_pack_start(GTK_BOX(bot), entry, TRUE, TRUE, 0);
-    GtkWidget* gear = gtk_button_new_with_label("⚙ 设置");
+    GtkWidget* gear = gtk_button_new_with_label(T("⚙ 设置", "⚙ Settings"));
     gtk_box_pack_start(GTK_BOX(bot), gear, FALSE, FALSE, 0);
     g_signal_connect(gear, "clicked", G_CALLBACK(onSettings), nullptr);
-    GtkWidget* play = gtk_button_new_with_label("▶ 渲染并播放");
+    GtkWidget* play = gtk_button_new_with_label(T("▶ 渲染并播放", "▶ Render & Play"));
     gtk_box_pack_start(GTK_BOX(bot), play, FALSE, FALSE, 0);
     g_signal_connect(play, "clicked", G_CALLBACK(onRender), entry);
     GtkWidget* st = gtk_label_new(g_status);
@@ -1303,19 +1335,20 @@ int main(int argc, char** argv) {
     // ---- 精细设置栏：声门开相增长率 alpha ----
     GtkWidget* fine = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_box_pack_start(GTK_BOX(root), fine, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(fine), gtk_label_new("精细设置  alpha(张力):"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(fine), gtk_label_new(T("精细设置  alpha(张力):", "Fine settings  alpha(tension):")), FALSE, FALSE, 0);
     GtkWidget* sc = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.5, 25.0, 0.1);
     gtk_range_set_value(GTK_RANGE(sc), 2.5);
     gtk_widget_set_size_request(sc, 420, -1);
     gtk_box_pack_start(GTK_BOX(fine), sc, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(fine), gtk_label_new("2~5 自然 / 25 尖锐(旧默认)"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(fine), gtk_label_new(T("2~5 自然 / 25 尖锐(旧默认)", "2~5 natural / 25 sharp (old default)")), FALSE, FALSE, 0);
     g_signal_connect(sc, "value-changed", G_CALLBACK(+[](GtkRange* r, gpointer){ g_alpha = gtk_range_get_value(r); }), nullptr);
 
+    std::snprintf(g_status, sizeof g_status, "%s", T("就绪", "Ready"));
     buildVoicebankPanel();                 // 必须在 show_all 之前建好，否则子控件不显示
     gtk_widget_show_all(win);
     gtk_widget_show_all(g_vbRevealer);                                  // overlay 子控件需显式 show
     gtk_revealer_set_reveal_child(GTK_REVEALER(g_vbRevealer), FALSE);   // 初始收起
-    if (g_tracks.empty()) g_tracks.push_back(Track{ "轨道一", {} });
+    if (g_tracks.empty()) g_tracks.push_back(Track{ T("轨道一", "Track 1"), {} });
     g_curTrack = 0;
     if (g_notes.empty()) seedDemo();   // 空卷帘时给一段可编辑的默认旋律
     trackSave();

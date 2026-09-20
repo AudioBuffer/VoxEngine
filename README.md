@@ -1,5 +1,7 @@
 # VoxEngine 
 
+**English** | [简体中文](README.zh-CN.md)
+
 **VoxEngine** is an end-side native AI Singing Voice Synthesis (SVS) engine tailored for individual geeks and low-spec mobile devices. 
 
 The core mission is to break free from expensive cloud computing, laggy browser shells (WebView), and complex local compilation environments. It enables millisecond-level, high-quality AI singing output on older devices, making private, offline, and lightweight vocal creation accessible to everyone.

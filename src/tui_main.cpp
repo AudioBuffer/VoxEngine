@@ -2,6 +2,8 @@
 // 用法: ./build/vox_tui            交互
 //       ./build/vox_tui --selftest 非交互自检
 #include <cstdio>
+#include "i18n.h"
+using vox::T;
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
@@ -20,29 +22,29 @@ struct EnumParam { const char* label; std::vector<const char*> vals; int i{0}; }
 struct NumParam  { const char* label; double mn, mx, step, v; const char* unit; };
 
 static const char* kVowels[] = {"a","o","e","i","u","v"};
-static const char* kCons[]   = {"无","s","sh","f","p","b","m"};
+static const char* kCons[]   = {T("无", "none"),"s","sh","f","p","b","m"};
 
 struct UI {
     int vowel{0}, cons{0};
     NumParam n[13] = {
-        {"基频 F0",   80,   400,  5,    220,   "Hz"},
-        {"时长",      0.3,  5,    0.1,  1.0,   "s" },
-        {"声线缩放",  0.8,  1.4,  0.02, 1.0,   "x" },
+        {T("基频 F0", "Pitch F0"),   80,   400,  5,    220,   "Hz"},
+        {T("时长", "Duration"),      0.3,  5,    0.1,  1.0,   "s" },
+        {T("声线缩放", "Voice scale"),  0.8,  1.4,  0.02, 1.0,   "x" },
         {"F1",        200,  1100, 10,   800,   "Hz"},
         {"F2",        600,  2600, 20,   1200,  "Hz"},
         {"F3",        1800, 3400, 20,   2500,  "Hz"},
-        {"F4 空气感", 2800, 4200, 20,   3500,  "Hz"},
-        {"F5 空气感", 3800, 5200, 20,   4500,  "Hz"},
-        {"气息感",    0,    1,    0.02, 0.12,  ""  },
-        {"颤音深度",  0,    0.05, 0.002,0.008, ""  },
-        {"抖动",    0,    0.03, 0.002,0.004, ""  },
-        {"微幅",   0,    0.15, 0.01, 0.02,  ""  },
-        {"鼻音耦合",  0,    1,    0.05, 0.0,   ""  },
+        {T("F4 空气感", "F4 air"), 2800, 4200, 20,   3500,  "Hz"},
+        {T("F5 空气感", "F5 air"), 3800, 5200, 20,   4500,  "Hz"},
+        {T("气息感", "Breathiness"),    0,    1,    0.02, 0.12,  ""  },
+        {T("颤音深度", "Vibrato depth"),  0,    0.05, 0.002,0.008, ""  },
+        {T("抖动", "Jitter"),    0,    0.03, 0.002,0.004, ""  },
+        {T("微幅", "Shimmer"),   0,    0.15, 0.01, 0.02,  ""  },
+        {T("鼻音耦合", "Nasal coupling"),  0,    1,    0.05, 0.0,   ""  },
     };
     NumParam inf[3] = {
-        {"LDM 步数", 0, 6, 1,    3,    ""},
-        {"人味",     0, 1, 0.05, 0.35, ""},
-        {"推理开关", 0, 1, 1,    1,    ""},
+        {T("LDM 步数", "LDM steps"), 0, 6, 1,    3,    ""},
+        {T("人味", "Humanity"),     0, 1, 0.05, 0.35, ""},
+        {T("推理开关", "Inference"), 0, 1, 1,    1,    ""},
     };
     int sel{0};
     int total() const { return 2 + 13 + 3; }   // 元音 + 辅音 + 13个数值 + 推理3项
@@ -89,7 +91,7 @@ static std::string fmt(double v) {
 
 static void draw(const UI& u, const std::string& status) {
     std::string o = "\x1b[2J\x1b[H";
-    o += "\x1b[1;36m VoxEngine \x1b[0m  ↑↓ 选择   ←→ 调节   r 存文件   p 播放(不落盘)   q 退出\n";
+    o += T("\x1b[1;36m VoxEngine \x1b[0m  ↑↓ 选择   ←→ 调节   r 存文件   p 播放(不落盘)   q 退出\n", "\x1b[1;36m VoxEngine \x1b[0m  up/down select   left/right adjust   r save file   p play (no file)   q quit\n");
     o += "\x1b[90m----------------------------------------------\x1b[0m\n";
     int row = 0;
     auto line = [&](const std::string& text) { o += (row == u.sel ? "\x1b[7m> " : "  ") + text + "\x1b[0m\n"; row++; };
@@ -160,61 +162,61 @@ int main(int argc, char** argv) {
 
     if (self) {
         u.vowel = 1; u.n[0].v = 180; u.n[8].v = 0.25; u.cons = 1;
-        if (!renderAll(u)) { std::printf("渲染失败\n"); return 1; }
-        std::printf("C++ 层渲染 OK -> tui_cpp.wav\n");
+        if (!renderAll(u)) { std::printf(T("渲染失败\n", "render failed\n")); return 1; }
+        std::printf(T("C++ 层渲染 OK -> tui_cpp.wav\n", "C++ layer render OK -> tui_cpp.wav\n"));
         const int steps = int(u.inf[0].v);
         if (steps > 0) {
             std::string cmd = "node \"" + inferScript() + "\" tui_cpp.wav tui_cpp_ref.wav --steps=" + fmt(u.inf[0].v)
                             + " --human=" + fmt(u.inf[1].v) + " --f0=" + fmt(u.n[0].v);
-            std::printf("调用 JS 推理层: %s\n", cmd.c_str());
+            std::printf(T("调用 JS 推理层: %s\n", "calling JS inference layer: %s\n"), cmd.c_str());
             const int rc = std::system(cmd.c_str());
-            std::printf("推理层返回 %d\n", rc);
+            std::printf(T("推理层返回 %d\n", "inference layer returned %d\n"), rc);
         }
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "--pipe") == 0) {
                 std::vector<float> b2;
-                if (!renderToBuf(u, b2)) { std::printf("pipe: 渲染失败\n"); return 1; }
+                if (!renderToBuf(u, b2)) { std::printf(T("pipe: 渲染失败\n", "pipe: render failed\n")); return 1; }
                 const std::vector<unsigned char> w = makeWav16(b2, 44100);
                 const std::string pc = "node \"" + inferScript() + "\" - - --steps=2 --human=0.3 --f0=220 > pipe_out.wav";
                 FILE* pp = popen(pc.c_str(), "w");
-                if (!pp) { std::printf("pipe: popen 失败\n"); return 1; }
+                if (!pp) { std::printf(T("pipe: popen 失败\n", "pipe: popen failed\n")); return 1; }
                 std::fwrite(w.data(), 1, w.size(), pp);
                 const int rc = pclose(pp);
-                std::printf("pipe 测试: 内存 %zu 字节 -> JS(stdin/stdout) -> pipe_out.wav  rc=%d\n", w.size(), rc);
+                std::printf(T("pipe 测试: 内存 %zu 字节 -> JS(stdin/stdout) -> pipe_out.wav  rc=%d\n", "pipe test: memory %zu bytes -> JS(stdin/stdout) -> pipe_out.wav  rc=%d\n"), w.size(), rc);
             }
         }
-        std::printf("产物: tui_cpp.wav, tui_cpp_ref.wav\n");
+        std::printf(T("产物: tui_cpp.wav, tui_cpp_ref.wav\n", "outputs: tui_cpp.wav, tui_cpp_ref.wav\n"));
         return 0;
     }
 
-    if (!isatty(STDIN_FILENO)) { std::printf("需要 TTY；非交互请用 --selftest\n"); return 0; }
+    if (!isatty(STDIN_FILENO)) { std::printf(T("需要 TTY；非交互请用 --selftest\n", "TTY required; use --selftest for non-interactive\n")); return 0; }
     rawOn();
     std::atexit(rawOff);
-    draw(u, "\x1b[90m就绪\x1b[0m");
+    draw(u, T("\x1b[90m就绪\x1b[0m", "\x1b[90mready\x1b[0m"));
 
     while (true) {
         char c = 0;
         if (read(STDIN_FILENO, &c, 1) != 1) break;
         if (c == 'q' || c == 3) break;
         if (c == 'r') {
-            draw(u, "\x1b[33m渲染中…\x1b[0m");
-            if (!renderAll(u)) { draw(u, "\x1b[31m渲染失败\x1b[0m"); continue; }
-            std::string st = "\x1b[32m完成 -> tui_cpp.wav\x1b[0m";
+            draw(u, T("\x1b[33m渲染中…\x1b[0m", "\x1b[33mrendering...\x1b[0m"));
+            if (!renderAll(u)) { draw(u, T("\x1b[31m渲染失败\x1b[0m", "\x1b[31mrender failed\x1b[0m")); continue; }
+            std::string st = T("\x1b[32m完成 -> tui_cpp.wav\x1b[0m", "\x1b[32mdone -> tui_cpp.wav\x1b[0m");
             if (int(u.inf[0].v) > 0 && int(u.inf[2].v) == 1) {
                 std::string cmd = "node \"" + inferScript() + "\" tui_cpp.wav tui_cpp_ref.wav --steps=" + fmt(u.inf[0].v)
                                 + " --human=" + fmt(u.inf[1].v) + " --f0=" + fmt(u.n[0].v) + " >/dev/null 2>&1";
                 int rc = std::system(cmd.c_str());
-                st = (rc == 0) ? "\x1b[32m完成 -> tui_cpp_ref.wav (JS推理)\x1b[0m"
-                               : "\x1b[31mJS 推理层失败（骨架已存 tui_cpp.wav）\x1b[0m";
+                st = (rc == 0) ? T("\x1b[32m完成 -> tui_cpp_ref.wav (JS推理)\x1b[0m", "\x1b[32mdone -> tui_cpp_ref.wav (JS inference)\x1b[0m")
+                               : T("\x1b[31mJS 推理层失败（骨架已存 tui_cpp.wav）\x1b[0m", "\x1b[31mJS inference layer failed (skeleton saved to tui_cpp.wav)\x1b[0m");
             }
-            draw(u, st + "   \x1b[90m按 p 播放\x1b[0m");
+            draw(u, st + T("   \x1b[90m按 p 播放\x1b[0m", "   \x1b[90mpress p to play\x1b[0m"));
             continue;
         }
         if (c == 'p') {
             // 渲染到内存 -> 管道 -> mpv，全程不创建文件
-            draw(u, "\x1b[33m渲染中(内存)…\x1b[0m");
+            draw(u, T("\x1b[33m渲染中(内存)…\x1b[0m", "\x1b[33mrendering (in memory)...\x1b[0m"));
             std::vector<float> buf;
-            if (!renderToBuf(u, buf)) { draw(u, "\x1b[31m渲染失败\x1b[0m"); continue; }
+            if (!renderToBuf(u, buf)) { draw(u, T("\x1b[31m渲染失败\x1b[0m", "\x1b[31mrender failed\x1b[0m")); continue; }
             const std::vector<unsigned char> wav = makeWav16(buf, 44100);
             std::string cmd;
             if (int(u.inf[0].v) > 0 && int(u.inf[2].v) == 1) {
@@ -226,7 +228,7 @@ int main(int argc, char** argv) {
             }
             FILE* pp = popen(cmd.c_str(), "w");
             if (pp) { std::fwrite(wav.data(), 1, wav.size(), pp); ::pclose(pp); }
-            draw(u, "\x1b[36m播放完成（未创建文件）\x1b[0m");
+            draw(u, T("\x1b[36m播放完成（未创建文件）\x1b[0m", "\x1b[36mplayback done (no file created)\x1b[0m"));
             continue;
         }
         if (c == '\x1b') {
@@ -246,7 +248,7 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            draw(u, "\x1b[90m就绪\x1b[0m");
+            draw(u, T("\x1b[90m就绪\x1b[0m", "\x1b[90mready\x1b[0m"));
         }
     }
     rawOff();
