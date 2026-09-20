@@ -69,7 +69,7 @@ clang++ -O2 -std=c++17 -DVOX_WITH_ONNX -Isrc -I$HOME/onnxdev/headers \
 **按需加载**：onnxruntime 通过 `dlopen` 加载，未启用 ONNX 的进程里完全没有它，
 零启动开销、零内存占用（这是设计决定，见 `src/onnx_engine.h` 顶部注释）。
 
-模型契约见 [`MODEL_CONTRACT.md`](MODEL_CONTRACT.md)，训练方案见 [`TRAINING.md`](TRAINING.md)。
+模型契约见 [`docs/MODEL_CONTRACT.md`](docs/MODEL_CONTRACT.md)，训练方案见 [`docs/TRAINING.md`](docs/TRAINING.md)。
 
 ## 训练（全自动）
 
@@ -97,22 +97,33 @@ clang++ -O2 -std=c++17 -DVOX_WITH_ONNX -Isrc -I$HOME/onnxdev/headers \
 ## 目录结构
 
 ```
-src/            引擎与界面源码（全部头文件实现，无独立 .cpp 依赖）
-  lf_glottal.h    LF 声门源
-  kl_tract.h      声道（级联 + 并联高频支路）
-  noise_source.h  辅音噪声源
-  vox_engine.h    引擎主类
-  phonemes.h      中英日音素总表
-  f0_track.h      YIN 基频跟踪
-  wav_reader.h    WAV 读取 + 重采样
-  wav_writer.h    WAV 写出
-  onnx_engine.h   ONNX 推理接口（按需加载 + 降级）
-  auto_pipeline.h 全自动流水线核心
-  gui_main.cpp    X11 GUI
-  train_main.cpp  训练流水线 GUI
-  tui_main.cpp    终端 UI
-js/             JS 插件层（QuickJS）
-tools/          数据集准备与模型校验脚本
+README.md           项目愿景与技术路线
+BUILD.md            构建与开发指南（本文件）
+LICENSE             MIT
+docs/
+  MODEL_CONTRACT.md  ONNX 模型张量契约（训练必须严格对齐）
+  TRAINING.md        训练方案（数据、提音高、切块、导出）
+  REQUIREMENTS.md    需求演进记录（含每轮实测数据与失败复盘）
+src/                引擎与界面源码（头文件实现为主）
+  lf_glottal.h        LF 声门源
+  kl_tract.h          声道（级联 + Klatt 并联高频支路）
+  noise_source.h      辅音噪声源
+  vox_engine.h        引擎主类
+  phonemes.h          中英日音素总表（110 个）
+  f0_track.h          YIN 基频跟踪
+  wav_reader.h        WAV 读取 + 重采样
+  wav_writer.h        WAV 写出
+  onnx_engine.h       ONNX 推理接口（按需 dlopen + 降级）
+  auto_pipeline.h     全自动训练流水线核心
+  gui_main.cpp        X11 GUI（主界面）
+  train_main.cpp      训练流水线 GUI
+  tui_main.cpp        终端 UI
+  main.cpp            命令行测试入口
+  seq.h               序列渲染
+js/                 JS 插件层（QuickJS）
+tools/              数据集准备与模型校验
+  make_dataset.py     训练机上生成数据集
+  onnx_check.cpp      本机验证模型能否加载推理
 ```
 
 ## 已知限制
@@ -123,4 +134,4 @@ tools/          数据集准备与模型校验脚本
 
 ## 版本历史与需求记录
 
-需求演进记录见 [`REQUIREMENTS.md`](REQUIREMENTS.md)（含每轮的实测数据与失败复盘）。
+需求演进记录见 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)（含每轮的实测数据与失败复盘）。
